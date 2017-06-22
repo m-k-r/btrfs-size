@@ -1,0 +1,262 @@
+#!/bin/bash
+#
+# -----------------------------------------------------------------------------
+#
+# Author:	Marcel Keller
+# Usage: 	Shows the disk space used by subvolumes and their snapshots
+# License:	GPLv3 http://www.gnu.org/licenses/gpl-3.0
+#
+# ----------------------------- Global Variables ------------------------------
+
+version=0.1.0
+usage="usage: btrfs [parameter]
+
+ -l	list options: name, snapnr, size_total size_exclusive
+ -p	path to the btrfs-rootdirectory
+ -r	restrictions used to specify the subvolumes to be shown
+ -s	show the the snapshots
+ -v	show version of this script
+ -h	this page"
+
+# --------------------------------- Parameter ---------------------------------
+
+if [ "$#" == "0" ]
+	then	echo "$usage" && exit 0
+fi
+
+while getopts ":l:p:r:svh" opt; do
+	case ${opt} in
+	l)	list=$OPTARG
+		;;
+	p)	path=$OPTARG
+		;;
+	r)	restrictions=$OPTARG
+		;;
+	s)	show_snapshots=set
+		;;
+	v)	echo "${version}"
+		exit 0
+		;;
+	h)	echo "${usage}"
+		exit 0
+		;;
+	?)	echo "Invalid option: -$OPTARG" >&2
+		exit 1
+		;;
+	esac
+done
+
+# -----------------------------------------------------------------------------
+
+# set list options
+if [ ! -n "${list}" ]
+	then	:
+	elif	[ "${list}" == "name" ]
+		then	list="1"
+	elif	[ "${list}" == "snapnr" ]
+		then	list="2"
+	elif	[ "${list}" == "size_total" ]
+		then	list="3"
+	elif	[ "${list}" == "size_exclusive" ]
+		then	list="4"
+	else	echo "no valid list option is set " && exit 1
+fi
+
+# check if path ends with "/"
+if	[ -n "${path}" ]
+	then	# path is expected to not end with "/"
+			probe=$(echo ${path} | cut -c 1)
+			if [ ! "${probe}" == "/" ]
+				then	path="${path}/"
+			fi
+	else	echo "path (-p) is not specified" && exit 1
+fi
+
+# declare associative arrays
+declare -A name
+declare -A id
+declare -A generation
+declare -A flags
+declare -A timestamp
+declare -A snapshots
+declare -A size_total
+declare -A size_exclusive
+declare -A parent
+declare -A list_generations
+
+# get information for subvolumes
+subvol_all=$(btrfs subvolume list ${path} | rev | awk '{ print $1 }' | rev | sort)
+aa="0"
+
+for subvol_element in ${subvol_all}
+do	subvol_element_showall[aa]=$(btrfs subvolume show ${path}/${subvol_element})
+	aa=$((${aa} + 1))
+done
+
+# get size for subvolumes
+size=$(btrfs qgroup show --raw ${path} | egrep -v "16.00EiB")
+
+# if root-direcotry was not mounted umount it
+#if	[ "${is_mounted}" == "no" ]
+#	then	umount ${path}
+#fi
+
+# write information in associative arrays
+aa="0"
+for subvol_element in ${subvol_all}
+do	name[${subvol_element}]=$(sed -n 1p <<< "${subvol_element_showall[aa]}")
+	id[${subvol_element}]=$(echo "${subvol_element_showall[aa]}" | grep "Subvolume ID:" | awk '{ print $3 }')
+	generation[${subvol_element}]=$(echo "${subvol_element_showall[aa]}" | grep "Generation:" | awk '{ print $2 }')
+	flags[${subvol_element}]=$(echo "${subvol_element_showall[aa]}" | grep "Flags:" | cut -f 5-)
+	date=$(echo "${subvol_element_showall[aa]}" | grep "Creation time:" | cut -f 3-)
+	timestamp[${subvol_element}]=$(date -d "${date}" +"%s")
+	snapshots[${subvol_element}]=$(echo "${subvol_element_showall[aa]}" | sed -e '1,/Snapshot/d' | awk '{ print $1 }' | tr '\n' ' ')
+	size_total[${subvol_element}]=$(echo "${size}" | grep "0/${id[${subvol_element}]}" | awk '{ print $2 }')
+	size_exclusive[${subvol_element}]=$(echo "${size}" | grep "0/${id[${subvol_element}]}" | awk '{ print $3 }')
+	aa=$((${aa} + 1))
+done
+
+# subvolumes can be trunk, branch or leave
+# trunk references other subvolumes but is not referenced by others
+# branch subvolumes reference others and are referenced by others
+# leave subvolumes reference no others but are referenced by others
+
+# list all referenced subvols
+subvols_referenced=${snapshots[*]}
+
+# get trunk subvolumes
+for element_key in ${!snapshots[@]}
+do	probe=$(echo ${subvols_referenced} | grep ${element_key})
+
+	if	[ ! -n "${probe}" ]
+		then	parent[${element_key}]=${snapshots[${element_key}]}
+	fi
+done
+
+# find subvolumes which are connected
+for element in ${!parent[@]}
+do	child=${parent[${element}]}
+
+	while	[ -n "${child}" ] && [ ! -z "${child}" ]
+	do	child_current=$(echo ${child} | cut -d " " -f 1)
+		child_new=${snapshots[${child_current}]}
+
+		if	[ -n "${child_new}" ]
+			then	child+=" ${child_new}"
+					parent[${element}]+=" ${child_new}"
+		fi
+
+		child_nmbr=$(echo ${child} | awk -F ' ' '{print NF}')
+
+		if [ "${child_nmbr}" -gt "1" ]
+			then	child=$(echo ${child} | cut -d " " -f 2-)
+			else	unset child child_current child_new
+		fi
+	done
+	parent[${element}]="${element} ${parent[${element}]}"
+
+	# list_generations is used for sorting subvolumes by generation
+	for child_element in ${parent[${element}]}
+	do	list_generations[${generation[${child_element}]}]=${child_element}
+	done
+
+	unset parent[${element}]
+	# sort works with newline
+	list_sorted=$(echo ${!list_generations[*]} | tr " " "\n" | sort -g | tr "\n" " ")
+
+	# write subvolumes back sorted by generations
+	for list_sorted_element in ${list_sorted}
+	do	parent[${element}]+="${list_generations[${list_sorted_element}]}"$'\n'
+	done
+
+	# delete empty lines and convert newlines to columns
+	unset list_generations list_sorted
+	parent[${element}]=$(echo "${parent[${element}]}" | grep -v '^$' | tr "\n" " ")
+done
+
+# get a list with trunk-subvolumes in order
+parent_sorted=$(echo ${!parent[*]} | tr " " "\n" | sort | tr "\n" " ")
+
+subvol_snapshots_complete="0"
+size_total_complete="0"
+size_exclusive_complete="0"
+
+# output data
+for element in ${parent_sorted}
+do	subvol_last=$(echo ${parent[${element}]} | rev | cut -d " " -f 1 | rev)
+	size_total_current=${size_total[${subvol_last}]}
+	subvol_snapshots=$(($(echo ${parent[${element}]} | awk -F ' ' '{print NF}') - 1))
+
+	# aggregate exclusive data for all snapshots
+	for element_subvol in ${parent[${element}]}
+	do	if [ ! "${element_subvol}" == "${subvol_last}" ]
+			then	size_exclusive_current=$((${size_exclusive_current} + ${size_exclusive[${element_subvol}]}))
+		fi
+	done
+
+	# size_exclusive_current must exist
+	if	[ ! -n "${size_exclusive_current}" ] || [ -z "${size_exclusive_current}" ]
+		then	size_exclusive_current="0"
+	fi
+
+	# count absolute values
+	subvol_snapshots_complete=$((${subvol_snapshots_complete} + ${subvol_snapshots}))
+	size_total_complete=$((${size_total_complete} + ${size_total_current}))
+	size_exclusive_complete=$((${size_exclusive_complete} + ${size_exclusive_current}))
+
+	# make output more human readable
+	size_total_current=$(echo ${size_total_current} | numfmt --to=iec 2> /dev/null)
+	size_exclusive_current=$(echo ${size_exclusive_current} | numfmt --to=iec 2> /dev/null)
+
+	output+=$(printf '%-65s' "${element}")
+	output+=$(printf '%-11s' "${subvol_snapshots}")
+	output+=$(printf '%-9s' "${size_total_current}")
+	output+=$(printf "${size_exclusive_current}")
+	output+=$(echo "\n")
+	unset subvol_last size_total_current subvol_snapshots size_exclusive_current
+
+	if [ -n "${show_snapshots}" ]
+		then	for element_snapshot in ${parent[${element}]}
+				do	output+=$(printf '%-65s' "  ${element_snapshot}")
+					output+=$(printf '%-11s' "  1")
+					output+=$(printf '%-9s' "  $(echo ${size_total[${element_snapshot}]} | numfmt --to=iec 2> /dev/null)")
+					output+=$(printf "  $(echo ${size_exclusive[${element_snapshot}]} | numfmt --to=iec 2> /dev/null)")
+					output+=$(echo "\n")
+				done
+	fi
+done
+
+# make output more human readable
+size_total_complete=$(echo ${size_total_complete} | numfmt --to=iec 2> /dev/null)
+size_exclusive_complete=$(echo ${size_exclusive_complete} | numfmt --to=iec 2> /dev/null)
+
+# apply restrictions
+
+if	[ -n "${restrictions}" ]
+then	output=$(printf "${output}" | grep "${restrictions}" && echo "\n")
+fi
+
+# apply sort options
+if	[ -n "${list}" ]
+then	output=$(printf "${output}" | sort -k${list} && echo "\n")
+fi
+
+# print header
+printf '%*s\n' 100 '' | tr ' ' '-'
+printf "%-65s" "Snapshot / Subvolume"
+printf "%-11s" "Snap-Nr"
+printf "%-9s" "Current"
+printf "Snapshot Data"
+printf "\n"
+printf '%*s\n' 100 '' | tr ' ' '-'
+
+printf "${output}"
+
+# print footer
+printf '%*s\n' 100 '' | tr ' ' '-'
+printf "%-65s" "Total"
+printf "%-11s" "${subvol_snapshots_complete}"
+printf "%-9s" "${size_total_complete}"
+printf "${size_exclusive_complete}"
+printf "\n"
+printf '%*s\n' 100 '' | tr ' ' '-'
