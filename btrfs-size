@@ -8,7 +8,7 @@
 #
 # ----------------------------- Global Variables ------------------------------
 
-version=0.1.0
+version=0.2
 usage="usage: btrfs [parameter]
 
  -l	list options: name, snapnr, size_total size_exclusive
@@ -16,7 +16,11 @@ usage="usage: btrfs [parameter]
  -r	restrictions used to specify the subvolumes to be shown
  -s	show the the snapshots
  -v	show version of this script
- -h	this page"
+ -h	this page
+
+if an error occours like 'list_generations[${generation[${child_element}]}]' check with 'btrfs subvolume list -a' if you find something like '<FS_TREE>/' in front of the subvolume names (right column) and change then value of'btrfs_fs_tree_name' accordingly.
+this value may differ on your distribution"
+btrfs_fs_tree_name="<FS_TREE>/"
 
 # --------------------------------- Parameter ---------------------------------
 
@@ -65,7 +69,7 @@ fi
 # check if path ends with "/"
 if	[ -n "${path}" ]
 	then	# path is expected to not end with "/"
-			probe=$(echo ${path} | cut -c 1)
+			probe=$(echo ${path} | rev | cut -c 1)
 			if [ ! "${probe}" == "/" ]
 				then	path="${path}/"
 			fi
@@ -84,22 +88,39 @@ declare -A size_exclusive
 declare -A parent
 declare -A list_generations
 
-# get information for subvolumes
-subvol_all=$(btrfs subvolume list ${path} | rev | awk '{ print $1 }' | rev | sort)
-aa="0"
+# check if ${path} is a subvolume
+probe=$(btrfs subvolume show ${path} 2> /dev/null)
+if	[ ! -n "${probe}" ]
+	then	echo "${path} is neither a top level subvolume nor a regular subvolume" && exit 1
+fi
 
-for subvol_element in ${subvol_all}
-do	subvol_element_showall[aa]=$(btrfs subvolume show ${path}/${subvol_element})
-	aa=$((${aa} + 1))
-done
+# get list of subvolumes
+subvol_all=$(btrfs subvolume list -a ${path} | rev | awk '{ print $1 }' | rev | sed "s;${btrfs_fs_tree_name};;g" 2> /dev/null)
+aa="0"
 
 # get size for subvolumes
 size=$(btrfs qgroup show --raw ${path} | egrep -v "16.00EiB")
 
-# if root-direcotry was not mounted umount it
-#if	[ "${is_mounted}" == "no" ]
-#	then	umount ${path}
-#fi
+# get information for subvolumes
+for subvol_element in ${subvol_all}
+do
+
+	# determine mountpoint for subvolume
+	probe=$(echo ${subvol_element} | grep "/")
+
+	if	[ -n "${probe}" ]
+		then	subvol_parent=$(echo ${subvol_element} | awk -F '/' '{print $1}')
+				path_relative="$(mount | grep "subvol=/${subvol_parent})" | awk '{ print $3 }')/"
+				subvol_element=$(echo "${subvol_element}" | cut -d "/" -f 2-)
+		else	path_relative=$(mount | grep "subvol=/${subvol_element})" | awk '{ print $3 }')
+				unset subvol_element
+	fi
+
+	subvol_element_showall[aa]=$(btrfs subvolume show ${path_relative}${subvol_element})
+	aa=$((${aa} + 1))
+done
+
+unset subvol_parent path path_relative
 
 # write information in associative arrays
 aa="0"
