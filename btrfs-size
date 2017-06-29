@@ -116,6 +116,11 @@ do
 				unset subvol_element
 	fi
 
+	path_numbers=$(echo "${path_relative}" | wc -l)
+	if	[ ! "${path_numbers}" -eq "1" ]
+		then	echo "${path} is either not correct or unique" && exit 1
+	fi
+
 	subvol_element_showall[aa]=$(btrfs subvolume show ${path_relative}${subvol_element})
 	aa=$((${aa} + 1))
 done
