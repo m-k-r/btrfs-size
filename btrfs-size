@@ -30,23 +30,23 @@ fi
 
 while getopts ":l:p:r:svh" opt; do
 	case ${opt} in
-	l)	list=$OPTARG
-		;;
-	p)	path=$OPTARG
-		;;
-	r)	restrictions=$OPTARG
-		;;
-	s)	show_snapshots=set
-		;;
-	v)	echo "${version}"
-		exit 0
-		;;
-	h)	echo "${usage}"
-		exit 0
-		;;
-	?)	echo "Invalid option: -$OPTARG" >&2
-		exit 1
-		;;
+		l)	list=$OPTARG
+			;;
+		p)	path=$OPTARG
+			;;
+		r)	restrictions=$OPTARG
+			;;
+		s)	show_snapshots=set
+			;;
+		v)	echo "${version}"
+			exit 0
+			;;
+		h)	echo "${usage}"
+			exit 0
+			;;
+		?)	echo "Invalid option: -$OPTARG" >&2
+			exit 1
+			;;
 	esac
 done
 
@@ -55,24 +55,24 @@ done
 # set list options
 if [ ! -n "${list}" ]
 	then	:
-	elif	[ "${list}" == "name" ]
+	elif [ "${list}" == "name" ]
 		then	list="1"
-	elif	[ "${list}" == "snapnr" ]
+	elif [ "${list}" == "snapnr" ]
 		then	list="2"
-	elif	[ "${list}" == "size_total" ]
+	elif [ "${list}" == "size_total" ]
 		then	list="3"
-	elif	[ "${list}" == "size_exclusive" ]
+	elif [ "${list}" == "size_exclusive" ]
 		then	list="4"
 	else	echo "no valid list option is set " && exit 1
 fi
 
 # check if path ends with "/"
-if	[ -n "${path}" ]
+if [ -n "${path}" ]
 	then	# path is expected to not end with "/"
-			probe=$(echo ${path} | rev | cut -c 1)
-			if [ ! "${probe}" == "/" ]
-				then	path="${path}/"
-			fi
+		probe=$(echo ${path} | rev | cut -c 1)
+		if [ ! "${probe}" == "/" ]
+			then	path="${path}/"
+		fi
 	else	echo "path (-p) is not specified" && exit 1
 fi
 
@@ -90,7 +90,7 @@ declare -A list_generations
 
 # check if ${path} is a subvolume
 probe=$(btrfs subvolume show ${path} 2> /dev/null)
-if	[ ! -n "${probe}" ]
+if [ ! -n "${probe}" ]
 	then	echo "${path} is neither a top level subvolume nor a regular subvolume" && exit 1
 fi
 
@@ -103,28 +103,25 @@ size=$(btrfs qgroup show --raw ${path} | egrep -v "16.00EiB")
 
 # get information for subvolumes
 for subvol_element in ${subvol_all}
-do
-
-	# determine mountpoint for subvolume
+do	# determine mountpoint for subvolume
 	probe=$(echo ${subvol_element} | grep "/")
 
-	if	[ -n "${probe}" ]
+	if [ -n "${probe}" ]
 		then	subvol_parent=$(echo ${subvol_element} | awk -F '/' '{print $1}')
-				path_relative="$(mount | grep "subvol=/${subvol_parent})" | awk '{ print $3 }')/"
-				subvol_element=$(echo "${subvol_element}" | cut -d "/" -f 2-)
+			path_relative="$(mount | grep "subvol=/${subvol_parent})" | awk '{ print $3 }')/"
+			subvol_element=$(echo "${subvol_element}" | cut -d "/" -f 2-)
 		else	path_relative=$(mount | grep "subvol=/${subvol_element})" | awk '{ print $3 }')
-				unset subvol_element
+			unset subvol_element
 	fi
 
 	path_numbers=$(echo "${path_relative}" | wc -l)
-	if	[ ! "${path_numbers}" -eq "1" ]
+	if [ ! "${path_numbers}" -eq "1" ]
 		then	echo "${path} is either not correct or unique" && exit 1
 	fi
 
 	subvol_element_showall[aa]=$(btrfs subvolume show ${path_relative}${subvol_element})
 	aa=$((${aa} + 1))
 done
-
 unset subvol_parent path path_relative
 
 # write information in associative arrays
@@ -154,7 +151,7 @@ subvols_referenced=${snapshots[*]}
 for element_key in ${!snapshots[@]}
 do	probe=$(echo ${subvols_referenced} | grep ${element_key})
 
-	if	[ ! -n "${probe}" ]
+	if [ ! -n "${probe}" ]
 		then	parent[${element_key}]=${snapshots[${element_key}]}
 	fi
 done
@@ -163,13 +160,13 @@ done
 for element in ${!parent[@]}
 do	child=${parent[${element}]}
 
-	while	[ -n "${child}" ] && [ ! -z "${child}" ]
+	while [ -n "${child}" ] && [ ! -z "${child}" ]
 	do	child_current=$(echo ${child} | cut -d " " -f 1)
 		child_new=${snapshots[${child_current}]}
 
-		if	[ -n "${child_new}" ]
+		if [ -n "${child_new}" ]
 			then	child+=" ${child_new}"
-					parent[${element}]+=" ${child_new}"
+				parent[${element}]+=" ${child_new}"
 		fi
 
 		child_nmbr=$(echo ${child} | awk -F ' ' '{print NF}')
@@ -221,7 +218,7 @@ do	subvol_last=$(echo ${parent[${element}]} | rev | cut -d " " -f 1 | rev)
 	done
 
 	# size_exclusive_current must exist
-	if	[ ! -n "${size_exclusive_current}" ] || [ -z "${size_exclusive_current}" ]
+	if [ ! -n "${size_exclusive_current}" ] || [ -z "${size_exclusive_current}" ]
 		then	size_exclusive_current="0"
 	fi
 
@@ -243,12 +240,12 @@ do	subvol_last=$(echo ${parent[${element}]} | rev | cut -d " " -f 1 | rev)
 
 	if [ -n "${show_snapshots}" ]
 		then	for element_snapshot in ${parent[${element}]}
-				do	output+=$(printf '%-65s' "  ${element_snapshot}")
-					output+=$(printf '%-11s' "  1")
-					output+=$(printf '%-9s' "  $(echo ${size_total[${element_snapshot}]} | numfmt --to=iec 2> /dev/null)")
-					output+=$(printf "  $(echo ${size_exclusive[${element_snapshot}]} | numfmt --to=iec 2> /dev/null)")
-					output+=$(echo "\n")
-				done
+			do	output+=$(printf '%-65s' "  ${element_snapshot}")
+				output+=$(printf '%-11s' "  1")
+				output+=$(printf '%-9s' "  $(echo ${size_total[${element_snapshot}]} | numfmt --to=iec 2> /dev/null)")
+				output+=$(printf "  $(echo ${size_exclusive[${element_snapshot}]} | numfmt --to=iec 2> /dev/null)")
+				output+=$(echo "\n")
+			done
 	fi
 done
 
@@ -258,13 +255,13 @@ size_exclusive_complete=$(echo ${size_exclusive_complete} | numfmt --to=iec 2> /
 
 # apply restrictions
 
-if	[ -n "${restrictions}" ]
-then	output=$(printf "${output}" | grep "${restrictions}" && echo "\n")
+if [ -n "${restrictions}" ]
+	then	output=$(printf "${output}" | grep "${restrictions}" && echo "\n")
 fi
 
 # apply sort options
-if	[ -n "${list}" ]
-then	output=$(printf "${output}" | sort -k${list} && echo "\n")
+if [ -n "${list}" ]
+	then	output=$(printf "${output}" | sort -k${list} && echo "\n")
 fi
 
 # print header
