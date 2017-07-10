@@ -111,8 +111,8 @@ do	name[${subvol_element}]=$(sed -n 1p <<< "${subvol_element_showall[aa]}")
 	date=$(echo "${subvol_element_showall[aa]}" | grep "Creation time:" | cut -f 3-)
 	timestamp[${subvol_element}]=$(date -d "${date}" +"%s")
 	snapshots[${subvol_element}]=$(echo "${subvol_element_showall[aa]}" | sed -e '1,/Snapshot/d' | awk '{ print $1 }' | tr '\n' ' ')
-	size_total[${subvol_element}]=$(echo "${size}" | grep "0/${id[${subvol_element}]}" | awk '{ print $2 }')
-	size_exclusive[${subvol_element}]=$(echo "${size}" | grep "0/${id[${subvol_element}]}" | awk '{ print $3 }')
+	size_total[${subvol_element}]=$(echo "${size}" | grep -w "0/${id[${subvol_element}]}" | awk '{ print $2 }')
+	size_exclusive[${subvol_element}]=$(echo "${size}" | grep -w "0/${id[${subvol_element}]}" | awk '{ print $3 }')
 	aa=$((${aa} + 1))
 done
 
