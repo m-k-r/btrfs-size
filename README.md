@@ -8,4 +8,4 @@ The output can be customized to show only the subvolumes or with their snapshots
 
 ### usage
 
-btrfs-size -p $PATH -s (show snapshots) -r $RESTRICTION -l $LISTOPTION
+**btrfs-size -p** $PATH **-s** (show snapshots) **-r** $RESTRICTION **-l** $LISTOPTION
