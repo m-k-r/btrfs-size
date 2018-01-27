@@ -1,0 +1,17 @@
+_btrfs-size() {
+	local cur prev list
+	COMPREPLY=()
+	cur="${COMP_WORDS[COMP_CWORD]}"
+	prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+	case "${prev}" in
+		-l)	list="name snapnr size_total size_exclusive"
+			;;
+		*)	list="-l -p -r -s -v -h"
+			;;
+	esac
+
+	COMPREPLY=( $(compgen -W "${list}" -- ${cur}) )
+	return 0
+}
+complete -F _btrfs-size btrfs-size
